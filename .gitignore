@@ -1,0 +1,12 @@
+venv/
+ocr_env/
+
+__pycache__/
+*.pyc
+
+.env
+
+knowledge/images/
+knowledge/ocr_pdfs/
+
+*.log

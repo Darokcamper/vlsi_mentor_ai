@@ -1,0 +1,27 @@
+Q : While doing simulation mismatch debug, we open the same failing instance in the ATPG session and we compare the value of ATPG and simulation.
+
+During labs, we had run the entire ATPG script once again and then opened that failing instance.
+How to open it without running entire ATPG script? --> Using flatmodel
+
+
+Ans : i. While generating ATPG patterns itself, write out the flatmodel and patdb patterns
+
+Flatmodel : design data and settings will be stored.
+If you read this flatmodel, the design data and setting will get loaded back.
+
+Command to write the flatmodel :
+write_flat_model flatmodel -replace
+
+Command the patdb patterns :
+write_patterns patterns.patdb  -patdb -rep
+
+
+ii. If suppose, your simulation fails and you want to compare simulation and ATPG values, you can just load the flatmodel and read the patdb patterns
+
+
+set_context patterns -scan
+read_flat_model flatmodel
+read_patterns patterns.patdb
+
+Now you can open the failing instance and load the failing pattern.
+(We have done it without sourcing the ATPG script)
