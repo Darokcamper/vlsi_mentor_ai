@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  vlsi-mentor-ai:
+    build: .
+    container_name: vlsi_mentor_ai
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./knowledge:/app/knowledge
+    restart: unless-stopped

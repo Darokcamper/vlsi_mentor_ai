@@ -1,12 +1,35 @@
+# Virtual Environments
 venv/
 ocr_env/
+env/
 
+# Python Cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
+# Environment Secrets
 .env
+.streamlit/secrets.toml
+.streamlit/config.toml
 
+# IDE & Editor Configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Knowledge Base Cache & Generated Artifacts
 knowledge/images/
 knowledge/ocr_pdfs/
+knowledge/txt/
+knowledge/vectorstore/
+knowledge/chunks/
+knowledge/markdown/
 
+# Logs
 *.log
+.agents/

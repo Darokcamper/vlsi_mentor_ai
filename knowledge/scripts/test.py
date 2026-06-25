@@ -1,9 +1,12 @@
+import os
 from pathlib import Path
 from openai import OpenAI
 import base64
 
+api_key = os.getenv("DEEPSEEK_API_KEY", "sk-placeholder")
+
 client = OpenAI(
-    api_key="sk-a2f3d82435e644fdb5c84822d3c88da8",
+    api_key=api_key,
     base_url="https://api.deepseek.com"
 )
 
