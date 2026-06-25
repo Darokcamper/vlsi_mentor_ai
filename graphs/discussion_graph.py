@@ -42,6 +42,7 @@ class DiscussionState(TypedDict):
 def router_node(state: DiscussionState):
     """Determines which expert agents should participate based on the question."""
     question = state["question"]
+    print(f"\n[Graph] Starting router_node for question: '{question[:60]}...'")
     
     prompt = f"""Given the following VLSI / DFT question, select the expert agents that are highly relevant to answer and discuss this question.
 You MUST choose between 1 to 3 agents from this list:
@@ -64,13 +65,15 @@ Return ONLY a comma-separated list of the selected agent names in uppercase, e.g
         participants = [p.strip().upper() for p in response.content.split(",") if p.strip()]
         # Filter to valid ones
         participants = [p for p in participants if p in AGENT_MAP]
-    except Exception:
+    except Exception as e:
+        print(f"[Graph] Router LLM call failed: {e}")
         participants = []
         
     if not participants:
         # Fallback to SCAN and STA
         participants = ["SCAN", "STA"]
         
+    print(f"[Graph] Selected participants: {participants}")
     return {
         "participants": participants,
         "current_participant_idx": 0,
@@ -90,6 +93,7 @@ def expert_node(state: DiscussionState):
         return {}  # No-op safety
         
     agent_name = participants[idx]
+    print(f"\n[Graph] Running expert_node for agent: '{agent_name}' (Turn {idx+1}/{len(participants)}, Revision Round {state['revision_round']})")
     agent_func = AGENT_MAP.get(agent_name, ask_general)
     
     # Build discussion context
@@ -123,6 +127,7 @@ Please revise your previous response as the {agent_name} expert to address the c
     try:
         response_content = agent_func(prompt)
     except Exception as e:
+        print(f"[Graph] Expert '{agent_name}' function failed: {e}")
         response_content = f"Error generating response: {e}"
         
     new_history = list(state["discussion_history"])
@@ -138,6 +143,7 @@ Please revise your previous response as the {agent_name} expert to address the c
     if not replaced:
         new_history.append({"agent": agent_name, "content": response_content})
         
+    print(f"[Graph] Completed expert_node for agent: '{agent_name}'")
     return {
         "discussion_history": new_history,
         "current_participant_idx": idx + 1
@@ -146,6 +152,7 @@ Please revise your previous response as the {agent_name} expert to address the c
 def critic_node(state: DiscussionState):
     """Principal DFT Architect critiques the discussion and assigns a score."""
     question = state["question"]
+    print(f"\n[Graph] Running critic_node...")
     
     history_lines = []
     for item in state["discussion_history"]:
@@ -156,6 +163,7 @@ def critic_node(state: DiscussionState):
     try:
         feedback = critique(question, discussion_text)
     except Exception as e:
+        print(f"[Graph] Critic critique failed: {e}")
         feedback = f"Critique error: {e}"
         
     # Rate the discussion score
@@ -175,9 +183,11 @@ Rate the discussion from 1 to 10 (10 being perfect, 1 being completely incorrect
         match = re.search(r'\d+', score_response.content)
         if match:
             score = int(match.group())
-    except Exception:
+    except Exception as e:
+        print(f"[Graph] Critic score LLM call failed: {e}")
         pass
         
+    print(f"[Graph] Critic completed. Score: {score}/10")
     return {
         "critic_feedback": feedback,
         "critic_score": score
@@ -186,6 +196,7 @@ Rate the discussion from 1 to 10 (10 being perfect, 1 being completely incorrect
 def reviewer_node(state: DiscussionState):
     """Lead DFT architect compiles the final answer."""
     question = state["question"]
+    print(f"\n[Graph] Running reviewer_node...")
     
     history_lines = []
     for item in state["discussion_history"]:
@@ -195,8 +206,10 @@ def reviewer_node(state: DiscussionState):
     try:
         final_ans = review(question, discussion_text)
     except Exception as e:
+        print(f"[Graph] Reviewer review failed: {e}")
         final_ans = f"Review error: {e}"
         
+    print(f"[Graph] Reviewer completed compilation.")
     return {
         "final_answer": final_ans
     }
@@ -222,9 +235,11 @@ builder.add_node("reviewer", reviewer_node)
 
 # State transition after critic: loop back to expert (for revision) or go to reviewer
 def reset_revision_node(state: DiscussionState):
+    next_round = state["revision_round"] + 1
+    print(f"\n[Graph] Critic score < 8. Resetting participant index for revision round {next_round}...")
     return {
         "current_participant_idx": 0,
-        "revision_round": state["revision_round"] + 1
+        "revision_round": next_round
     }
 
 builder.add_node("reset_revision", reset_revision_node)

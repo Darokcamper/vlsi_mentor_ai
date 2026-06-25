@@ -5,8 +5,21 @@ import pickle
 import subprocess
 import numpy as np
 from pathlib import Path
+
+# Prevent PyTorch/OpenMP multithreading deadlocks on Windows (especially under Streamlit threads)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["MKL_DYNAMIC"] = "FALSE"
+
+try:
+    import torch
+    torch.set_num_threads(1)
+except Exception:
+    pass
+
 from sentence_transformers import SentenceTransformer
 import faiss
+
 
 # Paths
 KNOWLEDGE_DIR = Path("C:/vlsi-mentor-ai/knowledge")
@@ -212,6 +225,15 @@ _loaded_model = None
 _loaded_index = None
 _loaded_metadata = None
 
+# Eagerly load the model in the main thread during module import
+try:
+    print("Eagerly loading SentenceTransformer model in main thread to avoid Windows multi-threading deadlocks...")
+    _loaded_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    print("SentenceTransformer model loaded successfully.")
+except Exception as e:
+    print(f"Warning: Eager loading of SentenceTransformer failed: {e}")
+    _loaded_model = None
+
 def load_rag():
     global _loaded_model, _loaded_index, _loaded_metadata
     
@@ -222,7 +244,11 @@ def load_rag():
         return False
         
     if _loaded_model is None:
-        _loaded_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        try:
+            _loaded_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        except Exception as e:
+            print(f"Error loading SentenceTransformer: {e}")
+            return False
         
     if _loaded_index is None:
         _loaded_index = faiss.read_index(str(index_path))
