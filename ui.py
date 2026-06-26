@@ -349,90 +349,128 @@ elif mode == "OCR Progress Tracker":
         total_pages = st.session_state["total_pdf_pages"]
         pdf_page_counts = st.session_state["pdf_page_counts"]
 
+        # --- Read Ground Truth directly from Filesystem ---
+        processed_files_disk = []
+        failed_files_disk = []
+        skipped_pages_disk = 0
+        
+        for pdf_path in pdf_files:
+            txt_path = TXT_DIR / f"{pdf_path.stem}.txt"
+            if txt_path.exists():
+                try:
+                    with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    
+                    if "[OCR: Gemini]" in content:
+                        if "OCR failed" in content:
+                            failed_files_disk.append(pdf_path.name)
+                        else:
+                            processed_files_disk.append(pdf_path.name)
+                            # Count completed pages inside this file by searching for PAGE markers
+                            page_markers = re.findall(r"--- PAGE \d+ ---", content)
+                            if page_markers:
+                                skipped_pages_disk += len(page_markers)
+                            else:
+                                skipped_pages_disk += pdf_page_counts.get(pdf_path.name, 0)
+                except Exception:
+                    pass
+
         # Find latest log file in tasks directory
         tasks_dir = Path("C:/Users/hazar/.gemini/antigravity-cli/brain/483afadf-d34a-479e-89e3-0b1a32a03968/.system_generated/tasks")
         log_files = sorted(list(tasks_dir.glob("task-*.log")), key=os.path.getmtime, reverse=True) if tasks_dir.exists() else []
 
-        if not log_files:
-            st.info("No active OCR logs found. Please start the OCR script first.")
-        else:
+        # Default task tracking states
+        current_file = None
+        current_pages = 0
+        current_total_pages = 0
+        total_keys_found = 1
+        active_key_index = 1
+        latest_log_name = "None"
+        log_content = ""
+
+        if log_files:
             latest_log = log_files[0]
+            latest_log_name = latest_log.name
+            try:
+                with open(latest_log, "r", encoding="utf-8", errors="ignore") as f:
+                    log_content = f.read()
+                
+                # Scan lines for active job information
+                for line in log_content.splitlines():
+                    line = line.strip()
+                    if line.startswith("Processing PDF:"):
+                        current_file = line.replace("Processing PDF:", "").strip()
+                    elif "Transcribing page" in line:
+                        match = re.search(r"Transcribing page (\d+)/(\d+)", line)
+                        if match:
+                            current_pages = int(match.group(1))
+                            current_total_pages = int(match.group(2))
+                    elif "Initialized" in line and "Gemini client" in line:
+                        match = re.search(r"Initialized (\d+) Gemini client", line)
+                        if match:
+                            total_keys_found = int(match.group(1))
+                    elif "[Key Rotation]" in line:
+                        match = re.search(r"Rotating to Key (\d+)", line)
+                        if match:
+                            active_key_index = int(match.group(1))
+            except Exception:
+                pass
+
+        # Overall calculations based on disk ground truth (which is always accurate!)
+        completed_pages = skipped_pages_disk
+        
+        # Add active page progress if there is a running task
+        if current_file and current_file not in processed_files_disk:
+            completed_pages += max(0, current_pages - 1)
             
-            # Read and parse log
-            with open(latest_log, "r", encoding="utf-8", errors="ignore") as f:
-                log_content = f.read()
+        percentage = (completed_pages / total_pages) * 100 if total_pages > 0 else 0
+        
+        # Estimate remaining time
+        avg_time_per_page = 6.5
+        remaining_pages = total_pages - completed_pages
+        remaining_seconds = remaining_pages * avg_time_per_page
+        remaining_hours = remaining_seconds / 3600
+        
+        # Layout
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total PDFs Completed", f"{len(processed_files_disk)} / {total_pdfs}")
+        with col2:
+            st.metric("Total Pages Completed", f"{completed_pages} / {total_pages} ({percentage:.1f}%)")
+        with col3:
+            st.metric("Estimated Time Remaining", f"{remaining_hours:.1f} hours" if remaining_pages > 0 else "Complete")
 
-            processed_files = []
-            current_file = None
-            current_pages = 0
-            current_total_pages = 0
-            transcribed_pages = 0
-            skipped_pages = 0
+        # Progress bar
+        st.progress(min(percentage / 100.0, 1.0))
 
-            # Scan lines
-            for line in log_content.splitlines():
-                line = line.strip()
-                if line.startswith("Processing PDF:"):
-                    current_file = line.replace("Processing PDF:", "").strip()
-                elif "Successfully saved Gemini OCR to" in line:
-                    filename = line.replace("Successfully saved Gemini OCR to", "").strip()
-                    pdf_name = filename.replace(".txt", ".pdf")
-                    if pdf_name not in processed_files:
-                        processed_files.append(pdf_name)
-                elif "Already successfully processed with Gemini" in line:
-                    pdf_name = line.replace("Already successfully processed with Gemini:", "").strip()
-                    if pdf_name not in processed_files:
-                        processed_files.append(pdf_name)
-                        skipped_pages += pdf_page_counts.get(pdf_name, 0)
-                elif "Transcribing page" in line:
-                    match = re.search(r"Transcribing page (\d+)/(\d+)", line)
-                    if match:
-                        current_pages = int(match.group(1))
-                        current_total_pages = int(match.group(2))
-                        if "Done" in line or "... Done" in line:
-                            transcribed_pages += 1
+        if current_file and log_files and os.path.exists(log_files[0]) and time.time() - os.path.getmtime(log_files[0]) < 120:
+            st.info(f"🔄 **Currently Processing**: `{current_file}` (Page {current_pages}/{current_total_pages})")
+            st.warning(f"🔑 **Active API Key**: Key {active_key_index} of {total_keys_found} (Rotation Enabled)")
+        else:
+            st.success("🎉 **OCR Process Idle or Completed!**")
 
-            completed_pages = skipped_pages + transcribed_pages
-            percentage = (completed_pages / total_pages) * 100 if total_pages > 0 else 0
-            
-            # Estimate remaining time
-            avg_time_per_page = 6.5
-            remaining_pages = total_pages - completed_pages
-            remaining_seconds = remaining_pages * avg_time_per_page
-            remaining_hours = remaining_seconds / 3600
-            
-            # Layout
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total PDFs", f"{len(processed_files)} / {total_pdfs}")
-            with col2:
-                st.metric("Total Pages Completed", f"{completed_pages} / {total_pages} ({percentage:.1f}%)")
-            with col3:
-                st.metric("Estimated Time Remaining", f"{remaining_hours:.1f} hours" if remaining_pages > 0 else "Complete")
+        # Refresh and Auto-Refresh control
+        col_ref, col_auto = st.columns([1, 4])
+        with col_ref:
+            if st.button("🔄 Refresh Status", use_container_width=True):
+                st.rerun()
+        with col_auto:
+            st.caption(f"Last updated: {time.strftime('%X')} (using log: {latest_log_name})")
 
-            # Progress bar
-            st.progress(min(percentage / 100.0, 1.0))
+        # Expanders for detailed lists
+        with st.expander(f"📁 View Processed Files ({len(processed_files_disk)})"):
+            for idx, name in enumerate(processed_files_disk, 1):
+                st.write(f"{idx}. {name} (Pages: {pdf_page_counts.get(name, 'Unknown')})")
 
-            if current_file:
-                st.info(f"🔄 **Currently Processing**: `{current_file}` (Page {current_pages}/{current_total_pages})")
-            else:
-                st.success("🎉 **OCR Process Idle or Completed!**")
+        with st.expander(f"⏳ View Incomplete or Remaining Files ({total_pdfs - len(processed_files_disk)})"):
+            remaining_list = [p.name for p in pdf_files if p.name not in processed_files_disk]
+            for idx, name in enumerate(remaining_list, 1):
+                status_lbl = "⚠️ Incomplete (OCR failed pages)" if name in failed_files_disk else "⏳ Not started"
+                st.write(f"{idx}. {name} ({status_lbl} - Pages: {pdf_page_counts.get(name, 'Unknown')})")
 
-            # Refresh and Auto-Refresh control
-            col_ref, col_auto = st.columns([1, 4])
-            with col_ref:
-                if st.button("🔄 Refresh Status", use_container_width=True):
-                    st.rerun()
-            with col_auto:
-                st.caption(f"Last updated: {time.strftime('%X')} (using log: {latest_log.name})")
-
-            # Expanders for detailed lists
-            with st.expander("📁 View Processed Files"):
-                for idx, name in enumerate(processed_files, 1):
-                    st.write(f"{idx}. {name} (Pages: {pdf_page_counts.get(name, 'Unknown')})")
-
-            with st.expander("⏳ View Remaining Files"):
-                remaining_list = [p.name for p in pdf_files if p.name not in processed_files and p.name != current_file]
-                for idx, name in enumerate(remaining_list, 1):
-                    st.write(f"{idx}. {name} (Pages: {pdf_page_counts.get(name, 'Unknown')})")
+        if log_content:
+            with st.expander("📝 View Live Log Output (Last 30 Lines)"):
+                log_lines = log_content.splitlines()
+                last_lines = log_lines[-30:]
+                st.code("\n".join(last_lines), language="text")
 
