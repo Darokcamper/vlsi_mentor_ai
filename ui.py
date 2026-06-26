@@ -78,7 +78,8 @@ with st.sidebar:
             "Ask Question",
             "Interview Practice",
             "Multi-Agent Discussion",
-            "DFT Study Planner"
+            "DFT Study Planner",
+            "OCR Progress Tracker"
         ]
     )
 
@@ -301,3 +302,137 @@ elif mode == "DFT Study Planner":
                 st.markdown(study_plan)
     else:
         st.info("No practice interview history found. Please practice some questions in **Interview Practice** mode first, and then come back to see your customized study plan!")
+
+# =====================================
+# OCR PROGRESS TRACKER MODE
+# =====================================
+elif mode == "OCR Progress Tracker":
+    import os
+    import re
+    import time
+    from pathlib import Path
+    import fitz  # PyMuPDF
+
+    st.title("📂 Knowledge Base OCR Status")
+    st.caption("Monitor the progress of Gemini transcribing and OCR-ing your scanned PDF notes.")
+
+    # Paths
+    PROJECT_ROOT = Path("C:/vlsi-mentor-ai")
+    KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge"
+    PDF_DIR = KNOWLEDGE_DIR / "pdfs"
+    TXT_DIR = KNOWLEDGE_DIR / "txt"
+
+    # Find all PDFs
+    pdf_files = sorted(list(PDF_DIR.glob("*.pdf")) + list(KNOWLEDGE_DIR.glob("*.pdf")))
+    total_pdfs = len(pdf_files)
+
+    if total_pdfs == 0:
+        st.warning("No PDF files found in knowledge directories.")
+    else:
+        # Calculate total pages across all PDFs (cache this in session state so it doesn't run on every rerun)
+        if "total_pdf_pages" not in st.session_state or "pdf_page_counts" not in st.session_state:
+            with st.spinner("Analyzing PDF page counts..."):
+                total_pages = 0
+                pdf_page_counts = {}
+                for pdf_path in pdf_files:
+                    try:
+                        doc = fitz.open(pdf_path)
+                        pages = len(doc)
+                        pdf_page_counts[pdf_path.name] = pages
+                        total_pages += pages
+                        doc.close()
+                    except Exception as e:
+                        pdf_page_counts[pdf_path.name] = 0
+                st.session_state["total_pdf_pages"] = total_pages
+                st.session_state["pdf_page_counts"] = pdf_page_counts
+        
+        total_pages = st.session_state["total_pdf_pages"]
+        pdf_page_counts = st.session_state["pdf_page_counts"]
+
+        # Find latest log file in tasks directory
+        tasks_dir = Path("C:/Users/hazar/.gemini/antigravity-cli/brain/483afadf-d34a-479e-89e3-0b1a32a03968/.system_generated/tasks")
+        log_files = sorted(list(tasks_dir.glob("task-*.log")), key=os.path.getmtime, reverse=True) if tasks_dir.exists() else []
+
+        if not log_files:
+            st.info("No active OCR logs found. Please start the OCR script first.")
+        else:
+            latest_log = log_files[0]
+            
+            # Read and parse log
+            with open(latest_log, "r", encoding="utf-8", errors="ignore") as f:
+                log_content = f.read()
+
+            processed_files = []
+            current_file = None
+            current_pages = 0
+            current_total_pages = 0
+            transcribed_pages = 0
+            skipped_pages = 0
+
+            # Scan lines
+            for line in log_content.splitlines():
+                line = line.strip()
+                if line.startswith("Processing PDF:"):
+                    current_file = line.replace("Processing PDF:", "").strip()
+                elif "Successfully saved Gemini OCR to" in line:
+                    filename = line.replace("Successfully saved Gemini OCR to", "").strip()
+                    pdf_name = filename.replace(".txt", ".pdf")
+                    if pdf_name not in processed_files:
+                        processed_files.append(pdf_name)
+                elif "Already successfully processed with Gemini" in line:
+                    pdf_name = line.replace("Already successfully processed with Gemini:", "").strip()
+                    if pdf_name not in processed_files:
+                        processed_files.append(pdf_name)
+                        skipped_pages += pdf_page_counts.get(pdf_name, 0)
+                elif "Transcribing page" in line:
+                    match = re.search(r"Transcribing page (\d+)/(\d+)", line)
+                    if match:
+                        current_pages = int(match.group(1))
+                        current_total_pages = int(match.group(2))
+                        if "Done" in line or "... Done" in line:
+                            transcribed_pages += 1
+
+            completed_pages = skipped_pages + transcribed_pages
+            percentage = (completed_pages / total_pages) * 100 if total_pages > 0 else 0
+            
+            # Estimate remaining time
+            avg_time_per_page = 6.5
+            remaining_pages = total_pages - completed_pages
+            remaining_seconds = remaining_pages * avg_time_per_page
+            remaining_hours = remaining_seconds / 3600
+            
+            # Layout
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total PDFs", f"{len(processed_files)} / {total_pdfs}")
+            with col2:
+                st.metric("Total Pages Completed", f"{completed_pages} / {total_pages} ({percentage:.1f}%)")
+            with col3:
+                st.metric("Estimated Time Remaining", f"{remaining_hours:.1f} hours" if remaining_pages > 0 else "Complete")
+
+            # Progress bar
+            st.progress(min(percentage / 100.0, 1.0))
+
+            if current_file:
+                st.info(f"🔄 **Currently Processing**: `{current_file}` (Page {current_pages}/{current_total_pages})")
+            else:
+                st.success("🎉 **OCR Process Idle or Completed!**")
+
+            # Refresh and Auto-Refresh control
+            col_ref, col_auto = st.columns([1, 4])
+            with col_ref:
+                if st.button("🔄 Refresh Status", use_container_width=True):
+                    st.rerun()
+            with col_auto:
+                st.caption(f"Last updated: {time.strftime('%X')} (using log: {latest_log.name})")
+
+            # Expanders for detailed lists
+            with st.expander("📁 View Processed Files"):
+                for idx, name in enumerate(processed_files, 1):
+                    st.write(f"{idx}. {name} (Pages: {pdf_page_counts.get(name, 'Unknown')})")
+
+            with st.expander("⏳ View Remaining Files"):
+                remaining_list = [p.name for p in pdf_files if p.name not in processed_files and p.name != current_file]
+                for idx, name in enumerate(remaining_list, 1):
+                    st.write(f"{idx}. {name} (Pages: {pdf_page_counts.get(name, 'Unknown')})")
+
