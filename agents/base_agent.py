@@ -7,10 +7,18 @@ def ask_expert(
     expertise,
     history=None
 ):
+    # If the question is a bloated prompt constructed by the graph, extract the original question for RAG retrieval
+    import re
+    retrieval_query = question
+    if "Question:" in question:
+        match = re.search(r"Question:\s*(.*?)(?:\n\nHere is|\n\nRevision Round|\n\n|$)", question, re.DOTALL)
+        if match:
+            retrieval_query = match.group(1).strip()
+
     # Try retrieving relevant knowledge chunks
     context = ""
     try:
-        results = retrieve(question, top_k=4)
+        results = retrieve(retrieval_query, top_k=4)
         if results:
             context_parts = []
             for r in results:
@@ -31,9 +39,10 @@ Expertise:
 Rules:
 - Stay within your expertise.
 - If the question is outside your domain, clearly say so.
-- Give technically accurate VLSI answers.
+- Provide deep, concrete, production-ready engineering answers (suitable for tape-out reviews and senior DFT interviews) rather than high-level textbook summaries.
+- Explicitly specify design parameters, rules, and hardware blocks where relevant (e.g., partition scan chains strictly by clock/power domains, define target scan chain depths like 500–2000 flops, use lockup latches for CDC shift timing, specify OCC broadside launch-on-capture pulses, require isolation cells and level shifters for power domains, detail decompressor/compactor/X-masking channels for EDT instead of generic compression, use IEEE 1500/1687 wrappers, plan JTAG daisy-chain/hierarchical access).
 - Do not invent concepts.
-- Be concise but complete.
+- Be concise but complete and technically precise.
 - Use previous conversation context when references like "it", "this", "that", "they", "those" are used.
 """
 

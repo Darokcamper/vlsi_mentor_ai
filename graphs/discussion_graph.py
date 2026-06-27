@@ -273,8 +273,43 @@ builder.add_edge("reviewer", END)
 
 graph = builder.compile()
 
+def run_graph_stream(question):
+    """Invokes the graph and yields progress updates for real-time streaming in Streamlit."""
+    inputs = {"question": question}
+    
+    yield "Initializing agent graph and routing question...", None
+    
+    state = {}
+    for event in graph.stream(inputs, stream_mode="updates"):
+        for node_name, updates in event.items():
+            if node_name == "router":
+                participants = updates.get("participants", [])
+                yield f"Selected active participants: {', '.join(participants)}", None
+            elif node_name == "expert":
+                history = updates.get("discussion_history", [])
+                if history:
+                    last_item = history[-1]
+                    agent = last_item["agent"]
+                    yield f"Completed expert response for agent: **{agent}**", None
+            elif node_name == "reset_revision":
+                rev_round = updates.get("revision_round", 1)
+                yield f"Critic score < 8. Initiating revision round {rev_round}...", None
+            elif node_name == "critic":
+                score = updates.get("critic_score", 0)
+                yield f"Critic finished evaluation. Score: **{score}/10**", None
+            elif node_name == "reviewer":
+                yield "Lead Architect compiled the final answer.", None
+                
+            # Accumulate state updates
+            for k, v in updates.items():
+                state[k] = v
+                
+    yield "Graph workflow execution completed!", state
+
 def run_graph(question):
-    result = graph.invoke({
-        "question": question
-    })
-    return result
+    """Fallback invoke wrapper that consumes the stream to return the final state."""
+    final_result = {}
+    for msg, state in run_graph_stream(question):
+        if state is not None:
+            final_result = state
+    return final_result

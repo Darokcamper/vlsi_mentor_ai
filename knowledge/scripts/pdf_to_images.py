@@ -3,13 +3,14 @@
 import fitz
 from pathlib import Path
 
-PDF_DIR = Path("../pdfs")
-IMG_DIR = Path("../images")
+KNOWLEDGE_DIR = Path("C:/vlsi-mentor-ai/knowledge")
+IMG_DIR = KNOWLEDGE_DIR / "images"
 
 IMG_DIR.mkdir(exist_ok=True)
 
-for pdf_file in PDF_DIR.glob("*.pdf"):
-
+for pdf_file in KNOWLEDGE_DIR.rglob("*.pdf"):
+    if "ocr_pdfs" in pdf_file.parts:
+        continue
     print("Processing:", pdf_file.name)
 
     pdf = fitz.open(pdf_file)

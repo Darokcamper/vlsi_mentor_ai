@@ -51,7 +51,7 @@ def ocr_document(pdf_path, ocr_pdf_path):
 
 def extract_text_from_pdfs():
     """Extracts text page-by-page from all PDFs in the knowledge directory, saving them to TXT_DIR."""
-    pdf_files = list((KNOWLEDGE_DIR / "pdfs").glob("*.pdf")) + list(KNOWLEDGE_DIR.glob("*.pdf"))
+    pdf_files = [p for p in KNOWLEDGE_DIR.rglob("*.pdf") if "ocr_pdfs" not in p.parts]
     print(f"Found {len(pdf_files)} PDFs to process.")
     
     for pdf_path in pdf_files:

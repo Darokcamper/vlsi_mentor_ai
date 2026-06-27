@@ -224,27 +224,41 @@ elif mode == "Multi-Agent Discussion":
 
     if st.button("Launch Discussion", use_container_width=True):
         if question:
+            from graphs.discussion_graph import run_graph_stream
+            
             with st.status("Executing LangGraph multi-agent workflow...") as status:
-                st.write("Initializing agent graph and routing question...")
-                result = run_graph(question)
+                progress_placeholder = st.empty()
+                status_messages = []
+                result = None
+                
+                for msg, state in run_graph_stream(question):
+                    if state is not None:
+                        result = state
+                    else:
+                        status_messages.append(msg)
+                        progress_placeholder.markdown("\n".join([f"- {m}" for m in status_messages]))
+                
                 status.update(label="Graph workflow execution completed!", state="complete")
                 
             # Render stats
-            st.markdown(f"**Active Participants:** " + ", ".join([f"`{p}`" for p in result['participants']]))
-            st.markdown(f"**Self-Correction Rounds Run:** `{result['revision_round']}`")
-            st.markdown(f"**Critic Quality Score:** `{result['critic_score']}/10`")
-            
-            with st.expander("👁 View Full Multi-Agent Transcript"):
-                for idx, item in enumerate(result['discussion_history']):
-                    st.markdown(f"### 👤 {item['agent']} Response")
-                    st.write(item['content'])
-                    st.markdown("---")
-                    
-                st.markdown("### 🔍 Principal Architect (Critic) Feedback")
-                st.write(result['critic_feedback'])
+            if result:
+                st.markdown(f"**Active Participants:** " + ", ".join([f"`{p}`" for p in result.get('participants', [])]))
+                st.markdown(f"**Self-Correction Rounds Run:** `{result.get('revision_round', 0)}`")
+                st.markdown(f"**Critic Quality Score:** `{result.get('critic_score', 0)}/10`")
                 
-            st.success("### 🏆 Lead DFT Architect Compiled Answer")
-            st.markdown(result['final_answer'])
+                with st.expander("👁 View Full Multi-Agent Transcript"):
+                    for idx, item in enumerate(result.get('discussion_history', [])):
+                        st.markdown(f"### 👤 {item['agent']} Response")
+                        st.write(item['content'])
+                        st.markdown("---")
+                        
+                    st.markdown("### 🔍 Principal Architect (Critic) Feedback")
+                    st.write(result.get('critic_feedback', 'No feedback.'))
+                    
+                st.success("### 🏆 Lead DFT Architect Compiled Answer")
+                st.markdown(result.get('final_answer', 'No answer compiled.'))
+            else:
+                st.error("Failed to execute LangGraph workflow.")
         else:
             st.error("Please enter a question.")
 
@@ -319,11 +333,10 @@ elif mode == "OCR Progress Tracker":
     # Paths
     PROJECT_ROOT = Path("C:/vlsi-mentor-ai")
     KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge"
-    PDF_DIR = KNOWLEDGE_DIR / "pdfs"
     TXT_DIR = KNOWLEDGE_DIR / "txt"
 
     # Find all PDFs
-    pdf_files = sorted(list(PDF_DIR.glob("*.pdf")) + list(KNOWLEDGE_DIR.glob("*.pdf")))
+    pdf_files = sorted([p for p in KNOWLEDGE_DIR.rglob("*.pdf") if "ocr_pdfs" not in p.parts])
     total_pdfs = len(pdf_files)
 
     if total_pdfs == 0:

@@ -190,7 +190,7 @@ def process_all_pdfs():
     client_state = {"index": 0}
     
     # Locate all PDFs
-    pdf_files = list(PDF_DIR.glob("*.pdf")) + list(KNOWLEDGE_DIR.glob("*.pdf"))
+    pdf_files = [p for p in KNOWLEDGE_DIR.rglob("*.pdf") if "ocr_pdfs" not in p.parts]
     print(f"Found {len(pdf_files)} PDFs in knowledge directory.")
     
     success_count = 0

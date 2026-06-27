@@ -1,0 +1,97 @@
+ID,File,Topic,Source
+1,01_Fundamentals/Level_1_Session_1.pdf,Fundamentals,VLSIGuru
+2,01_Fundamentals/Level_1_Session_3.pdf,Fundamentals,VLSIGuru
+3,07_MBIST/MBIST_simulation_mismatch_debug.pdf,MBIST,VLSIGuru
+4,10_Misc/Wrappers.pdf,Miscellaneous,VLSIGuru
+5,01_Fundamentals/Level_1_Session_5.pdf,Fundamentals,VLSIGuru
+6,01_Fundamentals/Latches_Level_1_Session_6.pdf,Fundamentals,VLSIGuru
+7,10_Misc/On_chip_clock_controller_OCC.pdf,Miscellaneous,VLSIGuru
+8,01_Fundamentals/Level_1_Session_7.pdf,Fundamentals,VLSIGuru
+9,03_ATPG/Level_2_Session_7_part_2_ATPG_for_bypass_weekdays.pdf,ATPG,VLSIGuru
+10,01_Fundamentals/Level_1_Session_8.pdf,Fundamentals,VLSIGuru
+11,10_Misc/Additional_point_4.pdf,Miscellaneous,VLSIGuru
+12,03_ATPG/ATPG_difficult_interview_Ques.pdf,ATPG,VLSIGuru
+13,03_ATPG/ATPG_interview_question_1.pdf,ATPG,VLSIGuru
+14,03_ATPG/ATPG_lab_session_1.pdf,ATPG,VLSIGuru
+15,03_ATPG/ATPG_labs_session_2.pdf,ATPG,VLSIGuru
+16,03_ATPG/ATPG_labs_session_3.pdf,ATPG,VLSIGuru
+17,03_ATPG/ATPG_part_1_session_notes_3.pdf,ATPG,VLSIGuru
+18,03_ATPG/ATPG_part_2.pdf,ATPG,VLSIGuru
+19,03_ATPG/ATPG_part_3.pdf,ATPG,VLSIGuru
+20,03_ATPG/ATPG_part_4.pdf,ATPG,VLSIGuru
+21,03_ATPG/ATPG_Part_5_TDF_part_1.pdf,ATPG,VLSIGuru
+22,03_ATPG/ATPG_part_6_TDF_p2.pdf,ATPG,VLSIGuru
+23,03_ATPG/ATPG_part_7_TDF_part_3.pdf,ATPG,VLSIGuru
+24,03_ATPG/ATPG_part_8_Path_Delay_Fault_Model_2.pdf,ATPG,VLSIGuru
+25,03_ATPG/ATPG_part_9_IDDQ.pdf,ATPG,VLSIGuru
+26,06_JTAG/Boundary_Scan.pdf,JTAG,VLSIGuru
+27,10_Misc/Company.pdf,Miscellaneous,VLSIGuru
+28,03_ATPG/Coverage_imp.pdf,ATPG,VLSIGuru
+29,04_Fault_Models/Dead_cycles_2.pdf,Fault Models,VLSIGuru
+30,05_Compression/Decompressor_extra.pdf,Scan Compression,VLSIGuru
+31,05_Compression/EDT_difficult_int_questions.pdf,Scan Compression,VLSIGuru
+32,05_Compression/EDT_outputs.pdf,Scan Compression,VLSIGuru
+33,10_Misc/Errata.pdf,Miscellaneous,VLSIGuru
+34,10_Misc/Extra_Interview_Questions.pdf,Miscellaneous,VLSIGuru
+35,03_ATPG/IDDQ_labs.pdf,ATPG,VLSIGuru
+36,10_Misc/IEEE_1500_std_2.pdf,Miscellaneous,VLSIGuru
+37,06_JTAG/JTAG_and_MBIST_difficult_interview_Ques_Int_prep_session_30_1.pdf,JTAG,VLSIGuru
+38,06_JTAG/JTAG.pdf,JTAG,VLSIGuru
+39,10_Misc/Juntran.pdf,Miscellaneous,VLSIGuru
+40,01_Fundamentals/Lab0_Lab1.pdf,Fundamentals,VLSIGuru
+41,01_Fundamentals/Level_1_Session_2.pdf,Fundamentals,VLSIGuru
+42,01_Fundamentals/Level_1_Session_4.pdf,Fundamentals,VLSIGuru
+43,01_Fundamentals/Level_1_Session_5_part_2.pdf,Fundamentals,VLSIGuru
+44,01_Fundamentals/Level_2_Session_1.pdf,Fundamentals,VLSIGuru
+45,01_Fundamentals/Level_3_Part_4.pdf,Fundamentals,VLSIGuru
+46,10_Misc/Level_3_Projects_Part_1.pdf,Miscellaneous,VLSIGuru
+47,10_Misc/Level_3_Projects_Part_2.pdf,Miscellaneous,VLSIGuru
+48,10_Misc/Level_3_Projects_Part_3.pdf,Miscellaneous,VLSIGuru
+49,10_Misc/Level_3_Projects_Part_5_COREB_level.pdf,Miscellaneous,VLSIGuru
+50,10_Misc/Level_4_Projects_part_1_1.pdf,Miscellaneous,VLSIGuru
+51,10_Misc/Level_4_Projects_part_2.pdf,Miscellaneous,VLSIGuru
+52,08_LBIST/Logic_BIST.pdf,LBIST,VLSIGuru
+53,07_MBIST/MBIST_part_2.pdf,MBIST,VLSIGuru
+54,07_MBIST/MBIST_Part1_2.pdf,MBIST,VLSIGuru
+55,10_Misc/Miscellaneous.pdf,Miscellaneous,VLSIGuru
+56,02_Scan/Need_of_Scan_Insertion_Summary.pdf,Scan Design,VLSIGuru
+57,01_Fundamentals/Overview_of_DFT.pdf,Fundamentals,VLSIGuru
+58,10_Misc/Problems_in_Domain_mixing_miscellaneous_topics.pdf,Miscellaneous,VLSIGuru
+59,10_Misc/PROJECT_DETAILS.pdf,Miscellaneous,VLSIGuru
+60,10_Misc/Project_in_short.pdf,Miscellaneous,VLSIGuru
+61,10_Misc/Question_Bank.pdf,Miscellaneous,VLSIGuru
+62,07_MBIST/RAM_Sequential_final_1.pdf,MBIST,VLSIGuru
+63,10_Misc/Ring_oscillator_ques.pdf,Miscellaneous,VLSIGuru
+64,10_Misc/Sample_Resume.pdf,Miscellaneous,VLSIGuru
+65,02_Scan/Scan_Chain_Balancing_Problems_in_Edge_mixing.pdf,Scan Design,VLSIGuru
+66,05_Compression/Scan_Compression_part_2.pdf,Scan Compression,VLSIGuru
+67,05_Compression/Scan_Compression_part_3.pdf,Scan Compression,VLSIGuru
+68,05_Compression/Scan_Compression_part_1.pdf,Scan Compression,VLSIGuru
+69,05_Compression/Scan_compression_part_4.pdf,Scan Compression,VLSIGuru
+70,02_Scan/Scan_Difficult_interview_questions.pdf,Scan Design,VLSIGuru
+71,02_Scan/Scan_DRC_part_2.pdf,Scan Design,VLSIGuru
+72,02_Scan/Scan_Insertion_Session_1.pdf,Scan Design,VLSIGuru
+73,02_Scan/Scan_Insertion_Session_2.pdf,Scan Design,VLSIGuru
+74,02_Scan/Scan_Insertion_Typed.pdf,Scan Design,VLSIGuru
+75,10_Misc/Simulation_Interview_Questions.pdf,Miscellaneous,VLSIGuru
+76,10_Misc/simulation_miscellaneous_points_3.pdf,Miscellaneous,VLSIGuru
+77,10_Misc/Simulations.pdf,Miscellaneous,VLSIGuru
+78,10_Misc/STA.pdf,Miscellaneous,VLSIGuru
+79,10_Misc/STA_examples.pdf,Miscellaneous,VLSIGuru
+80,10_Misc/STA_extra_1.pdf,Miscellaneous,VLSIGuru
+81,10_Misc/STA_sept_batch.pdf,Miscellaneous,VLSIGuru
+82,03_ATPG/TDF_labs_overview.pdf,ATPG,VLSIGuru
+83,02_Scan/Types_of_scan_cells.pdf,Scan Design,VLSIGuru
+84,10_Misc/Unit_STA_BASIC_NOTES.pdf,Miscellaneous,VLSIGuru
+85,06_JTAG/Boundary_Scan_Test_A_Practical_Approach.pdf,JTAG,Harry Bleeker et al. (Springer)
+86,08_LBIST/Built_In_Test_for_VLSI_Pseudorandom_Techniques.pdf,LBIST,Paul H. Bardell et al. (Wiley)
+87,01_Fundamentals/Design_For_Test_for_Digital_ICs_and_Embedded_Core_Systems.pdf,Fundamentals,Alfred L. Crouch (Prentice Hall)
+88,01_Fundamentals/Digital_Systems_Testing_and_Testable_Design.pdf,Fundamentals,Miron Abramovici et al. (IEEE)
+89,01_Fundamentals/Essentials_of_Electronic_Testing.pdf,Fundamentals,Michael L. Bushnell & Vishwani D. Agrawal (Kluwer)
+90,10_Misc/Evolution_of_DFT_Studies_Scientometric_Perspective.pdf,Miscellaneous,Research Paper
+91,10_Misc/Survey_of_Low_Power_Testing_of_VLSI_Circuits.pdf,Miscellaneous,Survey Paper
+92,10_Misc/Tcl_and_the_Tk_Toolkit.pdf,Miscellaneous,John K. Ousterhout & Ken Jones (Addison-Wesley)
+93,10_Misc/Timing_Analysis_and_Optimization_of_Sequential_Circuits.pdf,Miscellaneous,Naresh Maheshwari & Sachin S. Sapatnekar (Springer)
+94,01_Fundamentals/VLSI_Test_Principles_and_Architectures.pdf,Fundamentals,Laung-Terng Wang et al. (Elsevier)
+95,06_JTAG/TShell_Boundary_Scan_User_Guide.pdf,JTAG,Synopsys
+96,10_Misc/TShell_User_Guide.pdf,Miscellaneous,Synopsys
