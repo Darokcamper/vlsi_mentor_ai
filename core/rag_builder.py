@@ -6,16 +6,21 @@ import subprocess
 import numpy as np
 from pathlib import Path
 
-# Prevent PyTorch/OpenMP multithreading deadlocks on Windows (especially under Streamlit threads)
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["MKL_DYNAMIC"] = "FALSE"
+import sys
 
-try:
-    import torch
-    torch.set_num_threads(1)
-except Exception:
-    pass
+# Prevent PyTorch/OpenMP multithreading deadlocks on Windows (especially under Streamlit threads)
+# Only limit threads if we are running within Streamlit, not when building/indexing offline
+is_streamlit = any("streamlit" in arg or "streamlit" in sys.argv[0].lower() for arg in sys.argv) or os.environ.get("STREAMLIT_SERVER_PORT") is not None
+
+if is_streamlit:
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["MKL_DYNAMIC"] = "FALSE"
+    try:
+        import torch
+        torch.set_num_threads(1)
+    except Exception:
+        pass
 
 from sentence_transformers import SentenceTransformer
 import faiss
