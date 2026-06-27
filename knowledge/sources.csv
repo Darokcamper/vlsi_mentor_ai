@@ -95,3 +95,8 @@ ID,File,Topic,Source
 94,01_Fundamentals/VLSI_Test_Principles_and_Architectures.pdf,Fundamentals,Laung-Terng Wang et al. (Elsevier)
 95,06_JTAG/TShell_Boundary_Scan_User_Guide.pdf,JTAG,Synopsys
 96,10_Misc/TShell_User_Guide.pdf,Miscellaneous,Synopsys
+97,01_Fundamentals/CMOS_VLSI_Design_4e_A_Circuits_and_Systems_Perspective.pdf,Fundamentals,"Neil H. E. Weste, David Harris & Ayan Banerjee (Pearson)"
+98,01_Fundamentals/Digital_Integrated_Circuits_A_Design_Perspective.pdf,Fundamentals,"Jan M. R. Rabaey, Anantha P. Chandrakasan, Borivoje Nikolic (Prentice Hall)"
+99,01_Fundamentals/Principles_of_CMOS_VLSI_Design_A_Systems_Perspective.pdf,Fundamentals,Neil H. E. Weste & Kamran Eshraghian (Addison-Wesley)
+100,07_MBIST/Testing_and_Testable_Design_of_High_Density_Random_Access_Memories.pdf,MBIST,Pinaki Mazumder & Kanad Chakraborty (Springer)
+101,06_JTAG/The_Boundary_Scan_Handbook_4th.pdf,JTAG,Kenneth P. Parker (Springer)

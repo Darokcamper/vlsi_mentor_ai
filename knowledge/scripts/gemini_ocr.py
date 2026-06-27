@@ -13,6 +13,9 @@ if sys.platform.startswith("win"):
 
 # Set paths
 PROJECT_ROOT = Path("C:/vlsi-mentor-ai")
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge"
 PDF_DIR = KNOWLEDGE_DIR / "pdfs"
 TXT_DIR = KNOWLEDGE_DIR / "txt"
@@ -78,13 +81,13 @@ def ocr_pdf_with_gemini(pdf_path, clients, client_state, txt_path):
         return False
         
     prompt = """You are an expert VLSI and DFT engineer.
-Transcribe the handwritten text, slides, diagrams, and notes from this page.
-Guidelines:
-1. Maintain all technical terms, formulas, and connections accurately.
-2. Clean up any obvious spelling errors or scribbles, but do not omit technical content.
-3. Explain diagrams and circuits in text (e.g. describing gates, inputs, outputs, and connections) to help semantic search index them.
-4. Output clean, structured markdown text.
-5. If the page is blank or has no content, just output an empty string."""
+Your task is to transcribe the slide, document, or handwritten page literally and comprehensively.
+CRITICAL GUIDELINES:
+1. DO NOT summarize, paraphrase, or omit any content. Transcribe every word, note, scribbled comment, formula, and table literally.
+2. If there are calculations, write out all equations, numbers, and math symbols exactly as they appear.
+3. For diagrams and schematics (e.g. gates, scan chains, EDT logic, MUXes), write a detailed textual explanation describing the components, inputs, outputs, connections, and flow of signals to help semantic search index them.
+4. Output in clean, structured Markdown, maintaining the original page layout as closely as possible.
+5. If the page is blank, output an empty string."""
 
     # 1. Parse existing txt file if it has progress
     transcribed_pages = {}
@@ -125,12 +128,17 @@ Guidelines:
         # Call Gemini API
         retries = 0
         page_text = ""
+        models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
+        if "model_index" not in client_state:
+            client_state["model_index"] = 0
+
         while retries < 10:
             client_index = client_state["index"]
             client = clients[client_index]
+            model_name = models[client_state["model_index"]]
             try:
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model=model_name,
                     contents=[
                         types.Part.from_bytes(
                             data=img_data,
@@ -139,7 +147,7 @@ Guidelines:
                         prompt
                     ]
                 )
-                page_text = response.text.strip()
+                page_text = response.text.strip() if response.text else ""
                 transcribed_pages[page_num] = page_text
                 print(" Done.")
                 has_new_transcriptions = True
@@ -147,17 +155,27 @@ Guidelines:
             except Exception as e:
                 err_str = str(e).lower()
                 is_quota_error = any(x in err_str for x in ["quota", "exhausted", "429"])
-                if is_quota_error and len(clients) > 1:
+                if is_quota_error:
+                    # If we have tried all keys, fall back to the next model if available
+                    if retries >= len(clients) and client_state["model_index"] < len(models) - 1:
+                        old_model = models[client_state["model_index"]]
+                        client_state["model_index"] += 1
+                        new_model = models[client_state["model_index"]]
+                        print(f"\n[Fallback] Persistent rate limit/quota hit for '{old_model}' across all keys. Falling back to '{new_model}'...")
+                        retries = 0
+                        continue
+
                     next_index = (client_index + 1) % len(clients)
                     client_state["index"] = next_index
-                    print(f"\n[Key Rotation] Key {client_index + 1} exhausted or rate limited. Rotating to Key {next_index + 1}...")
+                    sleep_time = 12.0 + (3.0 * retries)
+                    print(f"\n[Key Rotation] Key {client_index + 1} rate limited. Rotating to Key {next_index + 1} and backing off for {sleep_time:.1f}s...")
                     retries += 1
-                    time.sleep(2.0)
+                    time.sleep(sleep_time)
                     continue
-                elif any(x in err_str for x in ["429", "quota", "rate", "limit", "503", "unavailable", "network", "unreachable", "exhausted"]):
+                elif any(x in err_str for x in ["503", "unavailable", "network", "unreachable"]):
                     retries += 1
-                    sleep_time = 6.0 * (1.5 ** retries)
-                    print(f" Rate limited/Unavailable. Retrying in {sleep_time:.1f}s... (Attempt {retries}/10)")
+                    sleep_time = 10.0 * (1.5 ** retries)
+                    print(f" Service Unavailable/Network Error. Retrying in {sleep_time:.1f}s... (Attempt {retries}/10)")
                     time.sleep(sleep_time)
                 else:
                     print(f" Failed: {e}")
@@ -189,6 +207,17 @@ def process_all_pdfs():
     clients = get_gemini_clients()
     client_state = {"index": 0}
     
+    # Load sources.csv catalog
+    import csv
+    catalog = {}
+    csv_path = KNOWLEDGE_DIR / "sources.csv"
+    if csv_path.exists():
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rel_file = row["File"].replace("\\", "/").strip()
+                catalog[rel_file] = row
+                
     # Locate all PDFs
     pdf_files = [p for p in KNOWLEDGE_DIR.rglob("*.pdf") if "ocr_pdfs" not in p.parts]
     print(f"Found {len(pdf_files)} PDFs in knowledge directory.")
@@ -198,6 +227,28 @@ def process_all_pdfs():
     for pdf_path in pdf_files:
         txt_path = TXT_DIR / f"{pdf_path.stem}.txt"
         
+        rel_path = pdf_path.relative_to(KNOWLEDGE_DIR).as_posix()
+        row = catalog.get(rel_path)
+        is_vlsiguru = row and row.get("Source") == "VLSIGuru"
+        
+        if not is_vlsiguru:
+            source_info = row.get("Source") if row else "Unknown"
+            print(f"Skipping digital book/textbook: {pdf_path.name} (Source: {source_info})")
+            continue
+            
+        # Check page count to avoid OCR on files > 100 pages (prevents free tier exhaustion)
+        try:
+            doc = fitz.open(pdf_path)
+            num_pages = len(doc)
+            doc.close()
+        except Exception as e:
+            print(f"Failed to open {pdf_path.name} to check page count: {e}")
+            continue
+            
+        if num_pages > 100:
+            print(f"Skipping scanned note: {pdf_path.name} (Too many pages: {num_pages} > 100). Gemini API cannot handle large files on free tier.")
+            continue
+            
         # Check if already processed using Gemini without failures
         if txt_path.exists():
             with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -206,7 +257,7 @@ def process_all_pdfs():
                 print(f"Already successfully processed with Gemini: {pdf_path.name}")
                 continue
                 
-        print(f"\nProcessing PDF: {pdf_path.name}")
+        print(f"\nProcessing scanned note: {pdf_path.name}")
         has_new = ocr_pdf_with_gemini(pdf_path, clients, client_state, txt_path)
         
         if has_new:

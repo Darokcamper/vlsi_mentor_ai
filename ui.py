@@ -359,108 +359,211 @@ elif mode == "OCR Progress Tracker":
                 st.session_state["total_pdf_pages"] = total_pages
                 st.session_state["pdf_page_counts"] = pdf_page_counts
         
-        total_pages = st.session_state["total_pdf_pages"]
-        pdf_page_counts = st.session_state["pdf_page_counts"]
-
         # --- Read Ground Truth directly from Filesystem ---
-        processed_files_disk = []
-        failed_files_disk = []
-        skipped_pages_disk = 0
+        vlsiguru_total = 0
+        vlsiguru_completed = []
+        vlsiguru_failed = []
+        vlsiguru_completed_pages = 0
+        vlsiguru_total_pages = 0
         
+        digital_total = 0
+        digital_completed = []
+        digital_completed_pages = 0
+        digital_total_pages = 0
+
+        # Load sources.csv catalog
+        import csv
+        catalog = {}
+        csv_path = KNOWLEDGE_DIR / "sources.csv"
+        if csv_path.exists():
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rel_file = row["File"].replace("\\", "/").strip()
+                    catalog[rel_file] = row
+
         for pdf_path in pdf_files:
+            rel_path = pdf_path.relative_to(KNOWLEDGE_DIR).as_posix()
+            row = catalog.get(rel_path)
+            is_vlsiguru = row and row.get("Source") == "VLSIGuru"
+            pages = st.session_state["pdf_page_counts"].get(pdf_path.name, 0)
+            
             txt_path = TXT_DIR / f"{pdf_path.stem}.txt"
-            if txt_path.exists():
-                try:
-                    with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
-                    
-                    if "[OCR: Gemini]" in content:
-                        if "OCR failed" in content:
-                            failed_files_disk.append(pdf_path.name)
-                        else:
-                            processed_files_disk.append(pdf_path.name)
-                            # Count completed pages inside this file by searching for PAGE markers
-                            page_markers = re.findall(r"--- PAGE \d+ ---", content)
-                            if page_markers:
-                                skipped_pages_disk += len(page_markers)
+            exists = txt_path.exists() and txt_path.stat().st_size > 50
+            
+            if is_vlsiguru:
+                vlsiguru_total += 1
+                vlsiguru_total_pages += pages
+                if exists:
+                    try:
+                        with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                        if "[OCR: Gemini]" in content:
+                            if "ocr failed" in content.lower():
+                                vlsiguru_failed.append(pdf_path.name)
                             else:
-                                skipped_pages_disk += pdf_page_counts.get(pdf_path.name, 0)
-                except Exception:
-                    pass
+                                vlsiguru_completed.append(pdf_path.name)
+                                page_markers = re.findall(r"--- PAGE \d+ ---", content)
+                                vlsiguru_completed_pages += len(page_markers) if page_markers else pages
+                    except Exception:
+                        pass
+            else:
+                digital_total += 1
+                digital_total_pages += pages
+                if exists:
+                    digital_completed.append(pdf_path.name)
+                    digital_completed_pages += pages
 
-        # Find latest log file in tasks directory
-        tasks_dir = Path("C:/Users/hazar/.gemini/antigravity-cli/brain/483afadf-d34a-479e-89e3-0b1a32a03968/.system_generated/tasks")
-        log_files = sorted(list(tasks_dir.glob("task-*.log")), key=os.path.getmtime, reverse=True) if tasks_dir.exists() else []
-
-        # Default task tracking states
-        current_file = None
-        current_pages = 0
-        current_total_pages = 0
-        total_keys_found = 1
-        active_key_index = 1
-        latest_log_name = "None"
-        log_content = ""
-
-        if log_files:
-            latest_log = log_files[0]
-            latest_log_name = latest_log.name
-            try:
-                with open(latest_log, "r", encoding="utf-8", errors="ignore") as f:
-                    log_content = f.read()
+        # Dynamically find the latest conversation directory in brain path
+        brain_dir = Path("C:/Users/hazar/.gemini/antigravity-cli/brain")
+        active_conv_dir = None
+        if brain_dir.exists():
+            conv_dirs = [d for d in brain_dir.iterdir() if d.is_dir() and d.name != "scratch"]
+            if conv_dirs:
+                conv_dirs.sort(key=os.path.getmtime, reverse=True)
+                active_conv_dir = conv_dirs[0]
                 
-                # Scan lines for active job information
-                for line in log_content.splitlines():
-                    line = line.strip()
-                    if line.startswith("Processing PDF:"):
-                        current_file = line.replace("Processing PDF:", "").strip()
-                    elif "Transcribing page" in line:
-                        match = re.search(r"Transcribing page (\d+)/(\d+)", line)
-                        if match:
-                            current_pages = int(match.group(1))
-                            current_total_pages = int(match.group(2))
-                    elif "Initialized" in line and "Gemini client" in line:
-                        match = re.search(r"Initialized (\d+) Gemini client", line)
-                        if match:
-                            total_keys_found = int(match.group(1))
-                    elif "[Key Rotation]" in line:
-                        match = re.search(r"Rotating to Key (\d+)", line)
-                        if match:
-                            active_key_index = int(match.group(1))
+        tasks_dir = active_conv_dir / ".system_generated" / "tasks" if active_conv_dir else Path(".")
+        log_files = list(tasks_dir.glob("task-*.log")) if tasks_dir.exists() else []
+        
+        # Classify active logs based on contents
+        gemini_log_path = None
+        digital_log_path = None
+        
+        for log_path in log_files:
+            mtime = os.path.getmtime(log_path)
+            # Only track logs active in the last 15 minutes
+            if time.time() - mtime > 900:
+                continue
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    header = f.read(2048)
+                if "gemini_ocr" in header or "Gemini client" in header or "Processing scanned note:" in header:
+                    gemini_log_path = log_path
+                elif "rag_builder" in header or "Extracting text from PDFs..." in header or "Computing embeddings" in header:
+                    digital_log_path = log_path
             except Exception:
                 pass
 
-        # Overall calculations based on disk ground truth (which is always accurate!)
-        completed_pages = skipped_pages_disk
+        # Gemini OCR Log parsing
+        gemini_active = False
+        gemini_file = None
+        gemini_pages = 0
+        gemini_total_pages = 0
+        gemini_keys_found = 1
+        gemini_key_index = 1
+        gemini_log_content = ""
         
-        # Add active page progress if there is a running task
-        if current_file and current_file not in processed_files_disk:
-            completed_pages += max(0, current_pages - 1)
-            
-        percentage = (completed_pages / total_pages) * 100 if total_pages > 0 else 0
+        if gemini_log_path:
+            try:
+                with open(gemini_log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    gemini_log_content = f.read()
+                
+                # Check if it was modified recently
+                if time.time() - os.path.getmtime(gemini_log_path) < 120:
+                    gemini_active = True
+                
+                for line in gemini_log_content.splitlines():
+                    line = line.strip()
+                    if line.startswith("Processing scanned note:"):
+                        gemini_file = line.replace("Processing scanned note:", "").strip()
+                    elif "Transcribing page" in line:
+                        match = re.search(r"Transcribing page (\d+)/(\d+)", line)
+                        if match:
+                            gemini_pages = int(match.group(1))
+                            gemini_total_pages = int(match.group(2))
+                    elif "Initialized" in line and "Gemini client" in line:
+                        match = re.search(r"Initialized (\d+) Gemini client", line)
+                        if match:
+                            gemini_keys_found = int(match.group(1))
+                    elif "[Key Rotation]" in line:
+                        match = re.search(r"Rotating to Key (\d+)", line)
+                        if match:
+                            gemini_key_index = int(match.group(1))
+            except Exception:
+                pass
+
+        # Digital Book Indexing Log parsing
+        digital_active = False
+        digital_file = None
+        digital_batch = 0
+        digital_total_batches = 0
+        digital_status = "Idle"
+        digital_log_content = ""
         
-        # Estimate remaining time
-        avg_time_per_page = 6.5
-        remaining_pages = total_pages - completed_pages
-        remaining_seconds = remaining_pages * avg_time_per_page
-        remaining_hours = remaining_seconds / 3600
+        if digital_log_path:
+            try:
+                with open(digital_log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    digital_log_content = f.read()
+                
+                if time.time() - os.path.getmtime(digital_log_path) < 120:
+                    digital_active = True
+                
+                for line in digital_log_content.splitlines():
+                    line = line.strip()
+                    if line.startswith("Processing digital book:"):
+                        digital_file = line.replace("Processing digital book:", "").replace("...", "").strip()
+                        digital_status = "Extracting Text"
+                    elif "Building index..." in line or "Found" in line and "text files" in line:
+                        digital_status = "Chunking and Loading Index"
+                    elif "Batches:" in line:
+                        match = re.search(r"Batches:\s*(\d+)%\|.*?\|\s*(\d+)/(\d+)", line)
+                        if match:
+                            digital_batch = int(match.group(2))
+                            digital_total_batches = int(match.group(3))
+                            digital_status = f"Computing Embeddings (Batch {digital_batch}/{digital_total_batches})"
+            except Exception:
+                pass
+
+        # Scanned notes percentage
+        scanned_completed_pages = vlsiguru_completed_pages
+        if gemini_active and gemini_file and gemini_file not in vlsiguru_completed:
+            scanned_completed_pages += max(0, gemini_pages - 1)
+        scanned_percentage = (scanned_completed_pages / vlsiguru_total_pages) * 100 if vlsiguru_total_pages > 0 else 0
         
-        # Layout
+        # Digital books percentage
+        digital_completed_count = len(digital_completed)
+        digital_percentage = (digital_completed_count / digital_total) * 100 if digital_total > 0 else 0
+
+        # UI Layout
+        st.subheader("⚡ Section 1: Scanned VLSIGuru Notes (Gemini API OCR)")
+        st.caption("Processes handwritten scanned lecture slides page-by-page entirely in the cloud.")
+        
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total PDFs Completed", f"{len(processed_files_disk)} / {total_pdfs}")
+            st.metric("PDFs Completed", f"{len(vlsiguru_completed)} / {vlsiguru_total}")
         with col2:
-            st.metric("Total Pages Completed", f"{completed_pages} / {total_pages} ({percentage:.1f}%)")
+            st.metric("Pages Transcribed", f"{scanned_completed_pages} / {vlsiguru_total_pages} ({scanned_percentage:.1f}%)")
         with col3:
-            st.metric("Estimated Time Remaining", f"{remaining_hours:.1f} hours" if remaining_pages > 0 else "Complete")
-
-        # Progress bar
-        st.progress(min(percentage / 100.0, 1.0))
-
-        if current_file and log_files and os.path.exists(log_files[0]) and time.time() - os.path.getmtime(log_files[0]) < 120:
-            st.info(f"🔄 **Currently Processing**: `{current_file}` (Page {current_pages}/{current_total_pages})")
-            st.warning(f"🔑 **Active API Key**: Key {active_key_index} of {total_keys_found} (Rotation Enabled)")
+            st.metric("OCR Errors (Failed Pages)", f"{len(vlsiguru_failed)}")
+            
+        st.progress(min(scanned_percentage / 100.0, 1.0))
+        
+        if gemini_active and gemini_file:
+            st.info(f"🔄 **Currently Processing**: `{gemini_file}` (Page {gemini_pages}/{gemini_total_pages})")
+            st.warning(f"🔑 **Active API Key**: Key {gemini_key_index} of {gemini_keys_found} (Rotation Enabled)")
         else:
-            st.success("🎉 **OCR Process Idle or Completed!**")
+            st.success("🎉 **Gemini OCR Process Idle or Completed!**")
+            
+        st.write("---")
+        
+        st.subheader("📖 Section 2: Digital Books (Simple Text & FAISS Indexing)")
+        st.caption("Extracts clean text from digital reference manuals and generates vector embeddings.")
+        
+        cold1, cold2 = st.columns(2)
+        with cold1:
+            st.metric("Digital Textbooks Processed", f"{digital_completed_count} / {digital_total}")
+        with cold2:
+            st.metric("Indexing Status", "ACTIVE" if digital_active else "Idle")
+            
+        st.progress(min(digital_percentage / 100.0, 1.0))
+        
+        if digital_active:
+            st.info(f"🔄 **Indexer Action**: `{digital_status}`" + (f" | Active File: `{digital_file}`" if digital_file else ""))
+        else:
+            st.success("🎉 **Digital Book Indexer Idle or Completed!**")
+
+        st.write("---")
 
         # Refresh and Auto-Refresh control
         col_ref, col_auto = st.columns([1, 4])
@@ -468,22 +571,40 @@ elif mode == "OCR Progress Tracker":
             if st.button("🔄 Refresh Status", use_container_width=True):
                 st.rerun()
         with col_auto:
-            st.caption(f"Last updated: {time.strftime('%X')} (using log: {latest_log_name})")
-
-        # Expanders for detailed lists
-        with st.expander(f"📁 View Processed Files ({len(processed_files_disk)})"):
-            for idx, name in enumerate(processed_files_disk, 1):
-                st.write(f"{idx}. {name} (Pages: {pdf_page_counts.get(name, 'Unknown')})")
-
-        with st.expander(f"⏳ View Incomplete or Remaining Files ({total_pdfs - len(processed_files_disk)})"):
-            remaining_list = [p.name for p in pdf_files if p.name not in processed_files_disk]
-            for idx, name in enumerate(remaining_list, 1):
-                status_lbl = "⚠️ Incomplete (OCR failed pages)" if name in failed_files_disk else "⏳ Not started"
-                st.write(f"{idx}. {name} ({status_lbl} - Pages: {pdf_page_counts.get(name, 'Unknown')})")
-
-        if log_content:
-            with st.expander("📝 View Live Log Output (Last 30 Lines)"):
-                log_lines = log_content.splitlines()
-                last_lines = log_lines[-30:]
-                st.code("\n".join(last_lines), language="text")
-
+            st.caption(f"Last updated: {time.strftime('%X')}")
+            
+        # Detailed Expanders
+        with st.expander("📁 View Scanned VLSIGuru Notes Status"):
+            st.write(f"**Completed ({len(vlsiguru_completed)}):**")
+            for idx, name in enumerate(vlsiguru_completed, 1):
+                st.write(f"✓ {name} (Pages: {st.session_state['pdf_page_counts'].get(name, 0)})")
+            remaining_vlsiguru = [p.name for p in pdf_files if p.name not in vlsiguru_completed and p.name not in digital_completed]
+            st.write(f"**Remaining ({len(remaining_vlsiguru)}):**")
+            for idx, name in enumerate(remaining_vlsiguru, 1):
+                lbl = "⚠️ Has Failed Pages (retrying)" if name in vlsiguru_failed else "⏳ Waiting"
+                st.write(f"- {name} ({lbl} - Pages: {st.session_state['pdf_page_counts'].get(name, 0)})")
+                
+        with st.expander("📁 View Digital Books Status"):
+            st.write(f"**Processed ({len(digital_completed)}):**")
+            for idx, name in enumerate(digital_completed, 1):
+                st.write(f"✓ {name} (Pages: {st.session_state['pdf_page_counts'].get(name, 0)})")
+            # Get textbook names from catalog
+            textbook_names = [Path(d["File"]).name for d in catalog.values() if d["Source"] != "VLSIGuru"]
+            remaining_digital = [name for name in textbook_names if name not in digital_completed]
+            if remaining_digital:
+                st.write(f"**Remaining ({len(remaining_digital)}):**")
+                for idx, name in enumerate(remaining_digital, 1):
+                    st.write(f"- {name} (Pages: {st.session_state['pdf_page_counts'].get(name, 0)})")
+            else:
+                st.write("All digital textbooks successfully indexed!")
+                
+        # Live Logs Expanders
+        if gemini_log_content:
+            latest_gemini_name = gemini_log_path.name if gemini_log_path else "None"
+            with st.expander(f"📝 View Gemini OCR Live Log Output (Last 30 Lines - {latest_gemini_name})"):
+                st.code("\n".join(gemini_log_content.splitlines()[-30:]), language="text")
+                
+        if digital_log_content:
+            latest_digital_name = digital_log_path.name if digital_log_path else "None"
+            with st.expander(f"📝 View Digital Indexer Live Log Output (Last 30 Lines - {latest_digital_name})"):
+                st.code("\n".join(digital_log_content.splitlines()[-30:]), language="text")

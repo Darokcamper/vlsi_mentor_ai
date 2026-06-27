@@ -8,19 +8,20 @@ from pathlib import Path
 
 import sys
 
-# Prevent PyTorch/OpenMP multithreading deadlocks on Windows (especially under Streamlit threads)
-# Only limit threads if we are running within Streamlit, not when building/indexing offline
+# Prevent high CPU/RAM usage and deadlocks on Windows/Intel Core i5:
+# - In Streamlit: limit to 1 thread to avoid deadlocks.
+# - Offline Indexing: limit to 2 threads to prevent 100% CPU lockup and thermal/RAM throttling.
 is_streamlit = any("streamlit" in arg or "streamlit" in sys.argv[0].lower() for arg in sys.argv) or os.environ.get("STREAMLIT_SERVER_PORT") is not None
 
-if is_streamlit:
-    os.environ["OMP_NUM_THREADS"] = "1"
-    os.environ["MKL_NUM_THREADS"] = "1"
-    os.environ["MKL_DYNAMIC"] = "FALSE"
-    try:
-        import torch
-        torch.set_num_threads(1)
-    except Exception:
-        pass
+os.environ["OMP_NUM_THREADS"] = "1" if is_streamlit else "2"
+os.environ["MKL_NUM_THREADS"] = "1" if is_streamlit else "2"
+os.environ["MKL_DYNAMIC"] = "FALSE"
+
+try:
+    import torch
+    torch.set_num_threads(1 if is_streamlit else 2)
+except Exception:
+    pass
 
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -59,6 +60,17 @@ def extract_text_from_pdfs():
     pdf_files = [p for p in KNOWLEDGE_DIR.rglob("*.pdf") if "ocr_pdfs" not in p.parts]
     print(f"Found {len(pdf_files)} PDFs to process.")
     
+    # Load sources.csv catalog
+    import csv
+    catalog = {}
+    csv_path = KNOWLEDGE_DIR / "sources.csv"
+    if csv_path.exists():
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rel_file = row["File"].replace("\\", "/").strip()
+                catalog[rel_file] = row
+                
     for pdf_path in pdf_files:
         txt_path = TXT_DIR / f"{pdf_path.stem}.txt"
         
@@ -67,52 +79,29 @@ def extract_text_from_pdfs():
             print(f"Already cached text for: {pdf_path.name}")
             continue
             
-        print(f"Processing: {pdf_path.name}...")
+        rel_path = pdf_path.relative_to(KNOWLEDGE_DIR).as_posix()
+        row = catalog.get(rel_path)
+        is_vlsiguru = row and row.get("Source") == "VLSIGuru"
+        
+        if is_vlsiguru:
+            print(f"Skipping VLSIGuru scanned PDF: {pdf_path.name} (will be transcribed via Gemini OCR)")
+            continue
+            
+        print(f"Processing digital book: {pdf_path.name}...")
         try:
             doc = fitz.open(pdf_path)
-            
-            # Check text length across first few pages
-            total_text = ""
-            for page in doc:
-                total_text += page.get_text("text").strip()
-                
-            # If text is too short, we need to run OCR
-            if len(total_text) < 100:
-                print(f"  Scanned PDF detected. Running OCR...")
-                ocr_pdf_path = KNOWLEDGE_DIR / "ocr_pdfs" / f"{pdf_path.stem}_ocr.pdf"
-                ocr_pdf_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Perform OCR if ocr PDF does not exist or is empty
-                if not ocr_pdf_path.exists() or ocr_pdf_path.stat().st_size == 0:
-                    success = ocr_document(pdf_path, ocr_pdf_path)
-                    if not success:
-                        print(f"  Skipping {pdf_path.name} due to OCR failure.")
-                        continue
-                
-                # Load text from the OCR PDF
-                ocr_doc = fitz.open(ocr_pdf_path)
-                all_page_texts = []
-                for page_num in range(len(ocr_doc)):
-                    page_text = ocr_doc[page_num].get_text("text").strip()
-                    all_page_texts.append(f"--- PAGE {page_num + 1} ---\n{page_text}\n")
-                ocr_doc.close()
-            else:
-                print(f"  Digital PDF detected.")
-                all_page_texts = []
-                for page_num in range(len(doc)):
-                    page_text = doc[page_num].get_text("text").strip()
-                    all_page_texts.append(f"--- PAGE {page_num + 1} ---\n{page_text}\n")
-            
+            all_page_texts = []
+            for page_num in range(len(doc)):
+                page_text = doc[page_num].get_text("text").strip()
+                all_page_texts.append(f"--- PAGE {page_num + 1} ---\n{page_text}\n")
             doc.close()
             
             # Write to cache
             with open(txt_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(all_page_texts))
-                
-            print(f"Successfully cached text for {pdf_path.name}")
-            
+            print(f"Successfully cached text for digital book: {pdf_path.name}")
         except Exception as e:
-            print(f"Failed to process {pdf_path.name}: {e}")
+            print(f"Failed to process digital book {pdf_path.name}: {e}")
 
 def chunk_text(text, source_name, chunk_size=1000, overlap=200):
     """Splits a single PDF's cached text into chunks, keeping track of page numbers from markers."""
@@ -202,9 +191,9 @@ def build_index():
     print("Loading embedding model (sentence-transformers/all-MiniLM-L6-v2)...")
     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     
-    print("Computing embeddings...")
+    print("Computing embeddings (batch_size=32)...")
     texts = [c["text"] for c in all_chunks]
-    embeddings = model.encode(texts, show_progress_bar=True, batch_size=64)
+    embeddings = model.encode(texts, show_progress_bar=True, batch_size=32)
     embeddings = np.array(embeddings).astype("float32")
     
     faiss.normalize_L2(embeddings)
@@ -264,7 +253,7 @@ def load_rag():
             
     return True
 
-def retrieve(query, top_k=5):
+def retrieve(query, top_k=5, source_filter=None):
     """Retrieves top_k chunks matching the query, returning a list of dictionaries with source, page, text, and score."""
     if not load_rag():
         print("RAG index files not found. Please build the index first.")
@@ -273,6 +262,79 @@ def retrieve(query, top_k=5):
     query_vector = _loaded_model.encode([query]).astype("float32")
     faiss.normalize_L2(query_vector)
     
+    # If source filter is specified, perform exact local cosine similarity ranking on chunks of that specific file
+    if source_filter:
+        sf_clean = source_filter.lower().replace(".txt", "").replace(".pdf", "")
+        doc_indices = []
+        doc_chunks = []
+        
+        for idx, chunk in enumerate(_loaded_metadata):
+            chunk_src_clean = chunk["source"].lower().replace(".txt", "").replace(".pdf", "")
+            if sf_clean in chunk_src_clean:
+                doc_indices.append(idx)
+                doc_chunks.append(chunk)
+                
+        if not doc_chunks:
+            return []
+            
+        # Reconstruct vectors from FAISS index and calculate cosine similarities locally
+        import numpy as np
+        doc_vectors = []
+        for idx in doc_indices:
+            vec = _loaded_index.reconstruct(idx)
+            doc_vectors.append(vec)
+            
+        doc_vectors = np.array(doc_vectors).astype("float32")
+        faiss.normalize_L2(doc_vectors)
+        
+        # Dot product of normalized vectors gives cosine similarity
+        scores = np.dot(doc_vectors, query_vector[0])
+        
+        # Boost scores based on exact keyword/number matching to handle follow-up queries like "what about 3 and 4"
+        boosted_ranked = []
+        import re
+        for score, chunk in zip(scores, doc_chunks):
+            boost = 0.0
+            # Check for numbers in the query (e.g. "3", "4") matching rule headers (e.g. "3.", "4.")
+            for num in re.findall(r"\b\d+\b", query):
+                # Strong boost for slide headers starting with '# 3' or '# 4' or starting with '3.'
+                if re.search(r"#\s*" + num + r"\b", chunk["text"]):
+                    boost += 1.2
+                elif re.search(r"^\s*" + num + r"\b[\.\-:]", chunk["text"]):
+                    boost += 1.2
+                # Medium boost for rule numbers inside the text
+                elif re.search(r"\b" + num + r"\b[\.\-:]", chunk["text"]):
+                    boost += 0.4
+                elif re.search(r"page\s+" + num + r"\b", chunk["text"].lower()):
+                    boost += 0.4
+                    
+            # Check for specific technical terms in the query matching chunk text
+            query_words = [w.lower() for w in re.findall(r"\b[a-zA-Z]{3,}\b", query) if w.lower() not in ["what", "about", "from", "scan", "rule", "rules", "with", "this", "that", "they", "them"]]
+            for qw in query_words:
+                if qw in chunk["text"].lower():
+                    boost += 0.1
+                    
+            boosted_ranked.append((score + boost, chunk))
+            
+        ranked = sorted(boosted_ranked, key=lambda x: x[0], reverse=True)
+        
+        # Retrieve the top_k boosted results
+        top_results = ranked[:top_k]
+        
+        # Sort the top results by page number to keep chronological slide sequence for the LLM
+        sorted_results = sorted(top_results, key=lambda x: x[1]["page"])
+        
+        results = []
+        for score, chunk in sorted_results:
+            results.append({
+                "source": chunk["source"],
+                "page": chunk["page"],
+                "text": chunk["text"],
+                "score": float(score)
+            })
+        return results
+
+    # Global search when no source filter is specified
     scores, indices = _loaded_index.search(query_vector, top_k)
     
     results = []
